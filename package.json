@@ -4,8 +4,10 @@
   "description": "Dicoding academy submission music app v3 ",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "lint": "eslint ./"
+    "start-prod": "NODE_ENV=production node ./src/server.js",
+    "start-dev": "nodemon ./src/server.js",
+    "lint": "eslint ./src",
+    "migrate": "node-pg-migrate"
   },
   "author": "urayirvan",
   "license": "ISC",
@@ -17,6 +19,12 @@
   },
   "dependencies": {
     "@hapi/hapi": "^20.1.5",
-    "nanoid": "^3.1.23"
+    "@hapi/jwt": "^2.0.1",
+    "bcrypt": "^5.0.1",
+    "dotenv": "^10.0.0",
+    "joi": "^17.4.2",
+    "nanoid": "^3.1.23",
+    "node-pg-migrate": "^5.10.0",
+    "pg": "^8.7.1"
   }
 }
