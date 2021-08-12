@@ -2,11 +2,13 @@
 const { Pool } = require('pg');
 const { nanoid } = require('nanoid');
 const InvariantError = require('../../exceptions/InvariantError');
-const { getPlaylistSongs } = require('../../utils');
+const { mapDBToModel } = require('../../utils');
 
 class PlaylistSongsService {
-  constructor() {
+  constructor(cacheService, collaborationService) {
     this._pool = new Pool();
+    this._cacheService = cacheService;
+    this._collaborationService = collaborationService;
   }
 
   async addPlaylistSong({ playlistId, songId }) {
@@ -21,32 +23,42 @@ class PlaylistSongsService {
     if (!result.rows.length) {
       throw new InvariantError('Lagu gagal ditambahkan ke playlist');
     }
+
+    await this._cacheService.delete(`playlist:${id}`);
     return result.rows[0].id;
   }
 
-  async getPlaylistSongs(playlistId, credentialId) {
-    const query = {
-      text: `SELECT songs.title, songs.performer, playlists.id FROM playlistsongs
-      LEFT JOIN songs ON songs.id = playlistsongs.song_id
-      LEFT JOIN playlists ON playlists.id = playlistsongs.playlist_id
-      LEFT JOIN users ON users.id = playlists.owner
-      LEFT JOIN collaborations ON collaborations.playlist_id = playlists.id
-      WHERE playlists.id = $1 AND playlists.owner = $2 OR collaborations.user_id = $2
-      GROUP BY playlists.id, songs.title, songs.performer`,
-      values: [playlistId, credentialId],
-    };
+  async getPlaylistSong(id) {
+    try {
+      // mendapatkan lagu playlist dari cache
+      const result = await this._cacheService.get(`playlist:${id}`);
+      return JSON.parse(result);
+    } catch (error) {
+      // bila gagal, diteruskan dengan mendapatkan data dari database
+      const query = {
+        text: `SELECT songs.id, songs.title, songs.performer FROM playlistsongs, songs
+                WHERE songs.id = playlistsongs.song_id AND playlistsongs.playlist_id = $1`,
+        values: [id],
+      };
 
-    const result = await this._pool.query(query);
-    return result.rows.map(getPlaylistSongs);
+      const result = await this._pool.query(query);
+      const mappedResult = result.rows.map(mapDBToModel);
+
+      // daftar lagu pada playlist akan disimpan pada cache sebelum fungsi getPlaylistSongs dikembalikan
+      await this._cacheService.set(`playlist:${id}`, JSON.stringify(mappedResult));
+
+      return mappedResult;
+    }
   }
 
-  async deletePlaylistSongById(playlistId, songId) {
+  async deletePlaylistSongById(id, songId) {
     const query = {
       text: 'DELETE FROM playlistsongs WHERE playlist_id = $1 AND song_id = $2 RETURNING id',
-      values: [playlistId, songId],
+      values: [id, songId],
     };
 
     const result = await this._pool.query(query);
+    await this._cacheService.delete(`playlist:${id}`);
 
     if (!result.rows.length) {
       throw new InvariantError('Lagu gagal dihapus dari playlist');
